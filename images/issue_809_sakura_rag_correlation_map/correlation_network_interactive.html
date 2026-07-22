@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>さくらのAIチャレンジ参加記事の相関図(インタラクティブ)</title>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --deg-1: #86b6ef; --deg-2: #5598e7; --deg-4: #2a78d6; --deg-5: #1c5cab; --deg-7: #104281;
+    --edge-ink: #898781;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --deg-1: #9ec5f4; --deg-2: #6da7ec; --deg-4: #3987e5; --deg-5: #256abf; --deg-7: #184f95;
+      --edge-ink: #c3c2b7;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page-plane:     #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --deg-1: #9ec5f4; --deg-2: #6da7ec; --deg-4: #3987e5; --deg-5: #256abf; --deg-7: #184f95;
+    --edge-ink: #c3c2b7;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  .viz-root { padding: 20px; max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .subtitle { font-size: 12.5px; color: var(--text-muted); margin: 0 0 16px; }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .theme-toggle {
+    font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--text-primary); }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; margin-bottom: 16px;
+  }
+  #network { width: 100%; height: 560px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-top: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .legend-note { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+
+  #tooltip-panel {
+    min-height: 64px; font-size: 12.5px; color: var(--text-secondary);
+    border-top: 1px solid var(--gridline); margin-top: 10px; padding-top: 10px;
+  }
+  #tooltip-panel .ttl { font-size: 14px; color: var(--text-primary); font-weight: 600; margin-bottom: 4px; }
+  #tooltip-panel a { color: var(--series-1); text-decoration: none; }
+  #tooltip-panel a:hover { text-decoration: underline; }
+  #tooltip-panel .meta { color: var(--text-muted); }
+  #tooltip-panel .placeholder { color: var(--text-muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  caption { text-align: left; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--gridline); }
+  th { color: var(--text-muted); font-weight: 500; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td a { color: var(--series-1); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="toolbar">
+    <div>
+      <h1>さくらのAIチャレンジ参加記事の相関図</h1>
+      <p class="subtitle">ノードをドラッグ・ホバーできます。円の大きさ・濃さ = 次数、線の太さ = 意味的な近さ(コサイン距離が小さいほど近い)</p>
+    </div>
+    <button class="theme-toggle" id="themeToggle" type="button">ダークモードに切り替え</button>
+  </div>
+
+  <div class="card">
+    <div id="network"></div>
+    <div class="legend" id="legend"></div>
+    <p class="legend-note">出典: Qiita API v2で「さくらのAI」タグの参加記事を収集し、さくらのAI EngineのRAGドキュメント検索で記事間の類似度を測定(2026-07-22実行)。</p>
+    <div id="tooltip-panel"><span class="placeholder">ノードにカーソルを合わせると、記事タイトル・いいね数・次数を表示します。</span></div>
+  </div>
+
+  <div class="card">
+    <table id="dataTable">
+      <caption>表示: 参加記事一覧(グラフと同じデータのテーブル表示)</caption>
+      <thead>
+        <tr><th>記事タイトル</th><th class="num">いいね数</th><th class="num">次数</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const ARTICLES = [
+    { id: "c2f1834af9b4", title: "Laravel×さくらのAI Engineで自分専用の記事下書きツールを作る。", url: "https://qiita.com/miyacha/items/f4db3964afad5142113e", likes: 1, degree: 2 },
+    { id: "ae5f9d83ee4d", title: "さくらのAI Engineを無料枠で触ってみて、最初につまずいた話", url: "https://qiita.com/TheGateBreaker/items/855ee917db41fbe11fdd", likes: 1, degree: 1 },
+    { id: "174144d080e4", title: "MoodleのAIプロバイダでさくらのAI Engineをつかいたおす", url: "https://qiita.com/papillon/items/d0d64609fc63d659a7ef", likes: 0, degree: 1 },
+    { id: "9fba3743f654", title: "満開のさくら街道をゆく――さくらのAI Engine無償枠3,000回を従量課金で歩き直してみた", url: "https://qiita.com/torifukukaiou/items/b2e3ec8a4fb986aa786f", likes: 0, degree: 2 },
+    { id: "7cef28e4914f", title: "生成AI初心者がAIに聞きながら「さくらのAI Engine」無償プランを契約〜PowerShellで初APIコールしてみた", url: "https://qiita.com/miyacha/items/93a667c6117b1d46db55", likes: 2, degree: 4 },
+    { id: "f65e6b8e94cf", title: "さくらのAI Engineに書いてもらったコードで「ずんだもん」に毎朝私は起こしてもらう", url: "https://qiita.com/torifukukaiou/items/3c03c45da77e9cb7cf6b", likes: 7, degree: 1 },
+    { id: "2a40d44bd325", title: "【毎日自動更新】さくらのAI Engine 3,000リクエスト使い切りチャレンジ いいねランキング！", url: "https://qiita.com/torifukukaiou/items/c4f654f0dad56e5da409", likes: 1, degree: 5 },
+    { id: "2377f3b2bf77", title: "Claude Code無課金勢、LINE botをさくらのAI EngineのOpenAI互換Responses APIへ移行", url: "https://qiita.com/torifukukaiou/items/c3adf542824e4d5ae7b2", likes: 2, degree: 2 },
+    { id: "6c9071c44490", title: "OpenAI互換API、名乗るからには本物だった件", url: "https://qiita.com/torifukukaiou/items/747284dcd98157bdfad6", likes: 2, degree: 2 },
+    { id: "da13dd85bc9d", title: "さくらのAI Engine Playgroundに受賞のコツを聞いてみました", url: "https://qiita.com/torifukukaiou/items/38f5cd9fbcd60bcbe627", likes: 0, degree: 7 },
+    { id: "11ea84188b9f", title: "さくらのAI Engine Playgroundに記事を書いてもらいました", url: "https://qiita.com/torifukukaiou/items/5a3fd81908bcdb0ee59e", likes: 0, degree: 1 },
+    { id: "052ed7179387", title: "さくらのAI Engine無料枠でgpt-oss-120bを使う", url: "https://qiita.com/nomurasan/items/63654a3f9457a8b5ed35", likes: 10, degree: 2 },
+  ];
+
+  const EDGES = [
+    ["da13dd85bc9d", "f65e6b8e94cf", 0.07], ["da13dd85bc9d", "11ea84188b9f", 0.06],
+    ["da13dd85bc9d", "052ed7179387", 0.06], ["da13dd85bc9d", "6c9071c44490", 0.06],
+    ["da13dd85bc9d", "ae5f9d83ee4d", 0.06], ["da13dd85bc9d", "7cef28e4914f", 0.06],
+    ["da13dd85bc9d", "2a40d44bd325", 0.04], ["052ed7179387", "2a40d44bd325", 0.05],
+    ["6c9071c44490", "2a40d44bd325", 0.06], ["7cef28e4914f", "9fba3743f654", 0.07],
+    ["7cef28e4914f", "174144d080e4", 0.08], ["7cef28e4914f", "c2f1834af9b4", 0.10],
+    ["9fba3743f654", "2377f3b2bf77", 0.05], ["2377f3b2bf77", "2a40d44bd325", 0.05],
+    ["2a40d44bd325", "c2f1834af9b4", 0.10],
+  ];
+
+  const cssVar = (name) => getComputedStyle(document.querySelector(".viz-root")).getPropertyValue(name).trim();
+  const degreeColor = (degree) => cssVar(`--deg-${degree}`);
+
+  function buildNetwork() {
+    const nodes = new vis.DataSet(ARTICLES.map((a) => ({
+      id: a.id,
+      label: a.title.length > 16 ? a.title.slice(0, 16) + "…" : a.title,
+      value: a.degree,
+      color: { background: degreeColor(a.degree), border: cssVar("--surface-1") },
+      font: { color: cssVar("--text-secondary"), size: 12 },
+      article: a,
+    })));
+
+    const distances = EDGES.map((e) => e[2]);
+    const dmin = Math.min(...distances), dmax = Math.max(...distances);
+    const edges = new vis.DataSet(EDGES.map(([from, to, distance]) => {
+      const t = 1 - (distance - dmin) / (dmax - dmin + 1e-9);
+      return {
+        from, to,
+        width: 1 + 3 * t,
+        color: { color: cssVar("--edge-ink"), opacity: 0.35 + 0.55 * t },
+        title: `コサイン距離 ${distance.toFixed(2)}`,
+      };
+    }));
+
+    const options = {
+      nodes: { shape: "dot", scaling: { min: 12, max: 34 }, borderWidth: 1.5 },
+      edges: { smooth: { type: "continuous" } },
+      physics: { stabilization: true, barnesHut: { gravitationalConstant: -6000, springLength: 130 } },
+      interaction: { hover: true, tooltipDelay: 100 },
+    };
+
+    const network = new vis.Network(document.getElementById("network"), { nodes, edges }, options);
+    const panel = document.getElementById("tooltip-panel");
+
+    function renderPanel(article) {
+      panel.textContent = "";
+      const ttl = document.createElement("div");
+      ttl.className = "ttl";
+      const link = document.createElement("a");
+      link.href = article.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = article.title;
+      ttl.appendChild(link);
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = `いいね ${article.likes} ・ 次数(つながりの数) ${article.degree}`;
+      panel.appendChild(ttl);
+      panel.appendChild(meta);
+    }
+
+    network.on("hoverNode", (params) => {
+      const article = nodes.get(params.node).article;
+      renderPanel(article);
+    });
+    network.on("selectNode", (params) => {
+      const article = nodes.get(params.nodes[0]).article;
+      renderPanel(article);
+    });
+    return { nodes };
+  }
+
+  function buildLegend() {
+    const legend = document.getElementById("legend");
+    legend.textContent = "";
+    [1, 2, 4, 5, 7].forEach((degree) => {
+      const item = document.createElement("span");
+      item.className = "legend-item";
+      const dot = document.createElement("span");
+      dot.className = "legend-dot";
+      dot.style.background = degreeColor(degree);
+      const label = document.createElement("span");
+      label.textContent = `次数 ${degree}`;
+      item.appendChild(dot);
+      item.appendChild(label);
+      legend.appendChild(item);
+    });
+  }
+
+  function buildTable() {
+    const tbody = document.querySelector("#dataTable tbody");
+    tbody.textContent = "";
+    [...ARTICLES].sort((a, b) => b.degree - a.degree).forEach((a) => {
+      const tr = document.createElement("tr");
+      const tdTitle = document.createElement("td");
+      const link = document.createElement("a");
+      link.href = a.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = a.title;
+      tdTitle.appendChild(link);
+      const tdLikes = document.createElement("td");
+      tdLikes.className = "num";
+      tdLikes.textContent = a.likes;
+      const tdDegree = document.createElement("td");
+      tdDegree.className = "num";
+      tdDegree.textContent = a.degree;
+      tr.appendChild(tdTitle);
+      tr.appendChild(tdLikes);
+      tr.appendChild(tdDegree);
+      tbody.appendChild(tr);
+    });
+  }
+
+  let networkHandle = buildNetwork();
+  buildLegend();
+  buildTable();
+
+  const toggleBtn = document.getElementById("themeToggle");
+  toggleBtn.addEventListener("click", () => {
+    const root = document.documentElement;
+    const current = root.getAttribute("data-theme");
+    const next = current === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    toggleBtn.textContent = next === "dark" ? "ライトモードに切り替え" : "ダークモードに切り替え";
+    // Re-derive colors from the now-updated CSS custom properties.
+    networkHandle = buildNetwork();
+    buildLegend();
+  });
+</script>
+</body>
+</html>
